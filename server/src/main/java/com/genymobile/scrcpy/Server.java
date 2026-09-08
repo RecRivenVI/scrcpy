@@ -162,7 +162,14 @@ public final class Server {
             Completion completion = new Completion(asyncProcessors.size());
             for (AsyncProcessor asyncProcessor : asyncProcessors) {
                 asyncProcessor.start((fatalError) -> {
-                    completion.addCompleted(fatalError);
+                    // ConnectorX owns separate audio/video transports. Optional audio must not end control/video.
+                    boolean optionalAudio = "1".equals(System.getenv("CONNECTORX_AUDIO_OPTIONAL"))
+                            && (asyncProcessor instanceof AudioEncoder || asyncProcessor instanceof AudioRawRecorder);
+                    if (optionalAudio) {
+                        try { android.system.Os.shutdown(connection.getAudioFd(), android.system.OsConstants.SHUT_RDWR); }
+                        catch (Exception ignored) { /* The audio peer may already be closed. */ }
+                    }
+                    completion.addCompleted(fatalError && !optionalAudio);
                 });
             }
 

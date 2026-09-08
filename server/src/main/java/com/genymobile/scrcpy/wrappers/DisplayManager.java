@@ -178,7 +178,7 @@ public final class DisplayManager {
                 Context.class);
         ctor.setAccessible(true);
         android.hardware.display.DisplayManager dm = ctor.newInstance(FakeContext.get());
-        return dm.createVirtualDisplay(name, width, height, dpi, surface, flags);
+        return io.github.recrivenvi.connectorx.runtime.VirtualAppHooks.create(dm, name, width, height, dpi, surface, flags);
     }
 
     private Method getRequestDisplayPowerMethod() throws NoSuchMethodException {

@@ -282,6 +282,7 @@ public class NewDisplayCapture extends SurfaceCapture {
             PositionMapper positionMapper = PositionMapper.create(videoSize, eventTransform, displaySize);
             vdListener.onNewVirtualDisplay(virtualDisplay.getDisplay().getDisplayId(), positionMapper);
         }
+        io.github.recrivenvi.connectorx.runtime.VirtualAppHooks.onDisplayReady(virtualDisplay);
     }
 
     @Override

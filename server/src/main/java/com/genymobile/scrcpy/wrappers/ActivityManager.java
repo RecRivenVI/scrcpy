@@ -144,7 +144,7 @@ public final class ActivityManager {
                     /* userId */ /* UserHandle.USER_CURRENT */ -2);
         } catch (Throwable e) {
             Ln.e("Could not invoke method", e);
-            return 0;
+            return -1; // ConnectorX must not mistake a reflection failure for START_SUCCESS.
         }
     }
 
@@ -155,12 +155,14 @@ public final class ActivityManager {
         return forceStopPackageMethod;
     }
 
-    public void forceStopPackage(String packageName) {
+    public boolean forceStopPackage(String packageName) {
         try {
             Method method = getForceStopPackageMethod();
             method.invoke(manager, packageName, /* userId */ /* UserHandle.USER_CURRENT */ -2);
+            return true;
         } catch (Throwable e) {
             Ln.e("Could not invoke method", e);
+            return false;
         }
     }
 

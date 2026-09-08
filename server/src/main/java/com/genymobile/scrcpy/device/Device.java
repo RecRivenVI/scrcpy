@@ -295,13 +295,13 @@ public final class Device {
         return result;
     }
 
-    public static void startApp(String packageName, int displayId, boolean forceStop) {
+    public static int startApp(String packageName, int displayId, boolean forceStop) {
         PackageManager pm = FakeContext.get().getPackageManager();
 
         Intent launchIntent = getLaunchIntent(pm, packageName);
         if (launchIntent == null) {
             Ln.w("Cannot create launch intent for app " + packageName);
-            return;
+            return -1;
         }
 
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -314,10 +314,10 @@ public final class Device {
         }
 
         ActivityManager am = ServiceManager.getActivityManager();
-        if (forceStop) {
-            am.forceStopPackage(packageName);
+        if (forceStop && !am.forceStopPackage(packageName)) {
+            return -1;
         }
-        am.startActivity(launchIntent, options);
+        return am.startActivity(launchIntent, options);
     }
 
     public static void sendBroadcast(Intent intent) {

@@ -41,6 +41,15 @@ public final class DesktopConnection implements Closeable {
     private static LocalSocket connect(String abstractName) throws IOException {
         LocalSocket localSocket = new LocalSocket();
         localSocket.connect(new LocalSocketAddress(abstractName));
+        // ConnectorX: connect only to the Shizuku bridge that launched this process.
+        // Connected descriptors are then passed to the APK over authenticated Binder IPC.
+        String bridgeUid = System.getenv("CONNECTORX_BRIDGE_UID");
+        String bridgePid = System.getenv("CONNECTORX_BRIDGE_PID");
+        if ((bridgeUid != null && localSocket.getPeerCredentials().getUid() != Integer.parseInt(bridgeUid))
+                || (bridgePid != null && localSocket.getPeerCredentials().getPid() != Integer.parseInt(bridgePid))) {
+            localSocket.close();
+            throw new IOException("ConnectorX local bridge credentials mismatch");
+        }
         return localSocket;
     }
 
