@@ -12,6 +12,10 @@ import android.view.Surface;
 import com.genymobile.scrcpy.FakeContext;
 import com.genymobile.scrcpy.device.Device;
 import com.genymobile.scrcpy.util.Ln;
+import java.lang.reflect.Constructor;
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
 import org.json.JSONObject;
 
 /** ConnectorX-only hooks; absent environment leaves the original scrcpy behavior intact. */
@@ -19,7 +23,7 @@ public final class VirtualAppHooks {
     public static final String STATUS_PREFIX = "CONNECTORX_STATUS ";
     private static final String PACKAGE = System.getenv("CONNECTORX_APP_PACKAGE");
     private static boolean launched;
-    private static boolean refreshApplied;
+    private static final Map<VirtualDisplay, Boolean> REFRESH_REQUESTS = Collections.synchronizedMap(new WeakHashMap<>());
     private static int launchResult = -1;
     private static int activityDisplayId = -1;
     private static float requestedRate() {
@@ -27,7 +31,14 @@ public final class VirtualAppHooks {
         return value == null ? 60 : Float.parseFloat(value);
     }
     public static VirtualDisplay create(DisplayManager dm, String name, int width, int height, int dpi, Surface surface, int flags) throws Exception {
-        if (PACKAGE != null && Build.VERSION.SDK_INT >= 34) {
+        return create(dm,name,width,height,dpi,surface,flags,PACKAGE==null?0:requestedRate());
+    }
+    public static VirtualDisplay create(DisplayManager dm, String name, int width, int height, int dpi, Surface surface, int flags, float refreshRate) throws Exception {
+        return createWithRate(dm,name,width,height,dpi,surface,flags,refreshRate,false);
+    }
+    private static VirtualDisplay createWithRate(DisplayManager dm, String name, int width, int height, int dpi, Surface surface, int flags,
+                                                float refreshRate, boolean followPhysical) throws Exception {
+        if (Float.isFinite(refreshRate) && (refreshRate >= 24 || (followPhysical && refreshRate == 0)) && Build.VERSION.SDK_INT >= 34) {
             // Kept reflective like scrcpy's wrappers: API availability differs across Android releases.
             try {
                 Class<?> builderClass = Class.forName("android.hardware.display.VirtualDisplayConfig$Builder");
@@ -35,16 +46,32 @@ public final class VirtualAppHooks {
                         .newInstance(name, width, height, dpi);
                 builderClass.getMethod("setFlags", int.class).invoke(builder, flags);
                 builderClass.getMethod("setSurface", Surface.class).invoke(builder, surface);
-                builderClass.getMethod("setRequestedRefreshRate", float.class).invoke(builder, requestedRate());
+                builderClass.getMethod("setRequestedRefreshRate", float.class).invoke(builder, refreshRate);
                 Object config = builderClass.getMethod("build").invoke(builder);
                 VirtualDisplay vd = (VirtualDisplay) dm.getClass().getMethod("createVirtualDisplay", config.getClass()).invoke(dm, config);
-                refreshApplied = true;
+                if (vd == null) throw new IllegalStateException("Virtual display creation returned null");
+                REFRESH_REQUESTS.put(vd, true);
                 return vd;
             } catch (ClassNotFoundException | NoSuchMethodException unavailable) {
                 Ln.w("Requested refresh rate unavailable; using platform default");
             }
         }
-        return dm.createVirtualDisplay(name, width, height, dpi, surface, flags);
+        VirtualDisplay vd = dm.createVirtualDisplay(name, width, height, dpi, surface, flags);
+        if (vd == null) throw new IllegalStateException("Virtual display creation returned null");
+        REFRESH_REQUESTS.put(vd, false);
+        return vd;
+    }
+    /** Android 16 exposes no in-place requested-refresh setter on VirtualDisplay or IDisplayManager.
+     * Zero requests platform/physical pacing at creation without ever resizing or recreating the VD.
+     * Older platforms fall back to their default; callers must report the measured Display rate.
+     */
+    public static VirtualDisplay createLocal(String name, int width, int height, int dpi, Surface surface, int flags) throws Exception {
+        Constructor<DisplayManager> ctor = DisplayManager.class.getDeclaredConstructor(Context.class);
+        ctor.setAccessible(true);
+        return createWithRate(ctor.newInstance(FakeContext.get()), name, width, height, dpi, surface, flags, 0, true);
+    }
+    public static boolean refreshRequestApplied(VirtualDisplay display) {
+        return Boolean.TRUE.equals(REFRESH_REQUESTS.get(display));
     }
     @SuppressWarnings("deprecation")
     public static synchronized void onDisplayReady(VirtualDisplay vd) {
@@ -78,7 +105,7 @@ public final class VirtualAppHooks {
                     .put("displayId", display.getDisplayId()).put("activityDisplayId", activityDisplayId)
                     .put("width", metrics.widthPixels).put("height", metrics.heightPixels).put("dpi", metrics.densityDpi)
                     .put("rotation", display.getRotation()).put("refreshRate", display.getRefreshRate())
-                    .put("requestedRefreshRate", requestedRate()).put("refreshRequestApplied", refreshApplied)
+                    .put("requestedRefreshRate", requestedRate()).put("refreshRequestApplied", refreshRequestApplied(vd))
                     .put("launchResult", launchResult);
             Ln.i(STATUS_PREFIX + state);
         } catch (Exception e) {

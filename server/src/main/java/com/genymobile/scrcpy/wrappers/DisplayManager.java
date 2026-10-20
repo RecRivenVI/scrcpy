@@ -174,11 +174,15 @@ public final class DisplayManager {
     }
 
     public VirtualDisplay createNewVirtualDisplay(String name, int width, int height, int dpi, Surface surface, int flags) throws Exception {
+        return createNewVirtualDisplay(name, width, height, dpi, surface, flags, 0);
+    }
+
+    public VirtualDisplay createNewVirtualDisplay(String name, int width, int height, int dpi, Surface surface, int flags, float refreshRate) throws Exception {
         Constructor<android.hardware.display.DisplayManager> ctor = android.hardware.display.DisplayManager.class.getDeclaredConstructor(
                 Context.class);
         ctor.setAccessible(true);
         android.hardware.display.DisplayManager dm = ctor.newInstance(FakeContext.get());
-        return io.github.recrivenvi.connectorx.runtime.VirtualAppHooks.create(dm, name, width, height, dpi, surface, flags);
+        return io.github.recrivenvi.connectorx.runtime.VirtualAppHooks.create(dm, name, width, height, dpi, surface, flags, refreshRate);
     }
 
     private Method getRequestDisplayPowerMethod() throws NoSuchMethodException {
